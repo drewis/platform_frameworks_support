@@ -49,7 +49,6 @@ import android.view.KeyEvent;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
-import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -940,7 +939,9 @@ public class MediaSessionCompat {
         }
 
         ResultReceiverWrapper(Parcel in) {
-            mResultReceiver = ResultReceiver.CREATOR.createFromParcel(in);
+            if (in.readInt() == 1) {
+                mResultReceiver = ResultReceiver.CREATOR.createFromParcel(in);
+            }
         }
 
         public static final Creator<ResultReceiverWrapper>
@@ -963,7 +964,12 @@ public class MediaSessionCompat {
 
         @Override
         public void writeToParcel(Parcel dest, int flags) {
-            mResultReceiver.writeToParcel(dest, flags);
+            if (mResultReceiver != null) {
+                dest.writeInt(1);
+                mResultReceiver.writeToParcel(dest, flags);
+            } else {
+                dest.writeInt(0);
+            }
         }
     }
 
@@ -1005,7 +1011,6 @@ public class MediaSessionCompat {
         private final Object mRccObj;
         private final MediaSessionStub mStub;
         private final Token mToken;
-        private final MessageHandler mHandler;
         private final String mPackageName;
         private final String mTag;
         private final AudioManager mAudioManager;
@@ -1018,7 +1023,8 @@ public class MediaSessionCompat {
         private boolean mIsActive = false;
         private boolean mIsRccRegistered = false;
         private boolean mIsMbrRegistered = false;
-        private Callback mCallback;
+
+        private MessageHandler mMessageHandler;
 
         private @SessionFlags int mFlags;
 
@@ -1034,7 +1040,7 @@ public class MediaSessionCompat {
         private int mLocalStream;
         private VolumeProviderCompat mVolumeProvider;
 
-        private VolumeProviderCompat.Callback mVolumeCallback
+        private final VolumeProviderCompat.Callback mVolumeCallback
                 = new VolumeProviderCompat.Callback() {
             @Override
             public void onVolumeChanged(VolumeProviderCompat volumeProvider) {
@@ -1062,7 +1068,6 @@ public class MediaSessionCompat {
             mMediaButtonEventReceiver = mbr;
             mStub = new MediaSessionStub();
             mToken = new Token(mStub);
-            mHandler = new MessageHandler(Looper.myLooper());
 
             mRatingType = RatingCompat.RATING_NONE;
             mVolumeType = MediaControllerCompat.PlaybackInfo.PLAYBACK_TYPE_LOCAL;
@@ -1076,9 +1081,6 @@ public class MediaSessionCompat {
 
         @Override
         public void setCallback(final Callback callback, Handler handler) {
-            if (callback == mCallback) {
-                return;
-            }
             if (callback == null || android.os.Build.VERSION.SDK_INT < 18) {
                 // There's nothing to register on API < 18 since media buttons
                 // all go through the media button receiver
@@ -1089,9 +1091,6 @@ public class MediaSessionCompat {
                     MediaSessionCompatApi19.setOnMetadataUpdateListener(mRccObj, null);
                 }
             } else {
-                if (handler == null) {
-                    handler = new Handler();
-                }
                 MediaSessionCompatApi14.Callback cb14 = new MediaSessionCompatApi14.Callback() {
                     @Override
                     public void onStop() {
@@ -1161,7 +1160,16 @@ public class MediaSessionCompat {
                             onMetadataUpdateObj);
                 }
             }
-            mCallback = callback;
+            synchronized (mLock) {
+                if (callback == null) {
+                    mMessageHandler = null;
+                    return;
+                }
+                if (handler == null) {
+                    handler = new Handler();
+                }
+                mMessageHandler = new MessageHandler(handler.getLooper(), callback);
+            }
         }
 
         @Override
@@ -1174,8 +1182,11 @@ public class MediaSessionCompat {
 
         @Override
         public void setPlaybackToLocal(int stream) {
-            if (mVolumeProvider != null) {
-                mVolumeProvider.setCallback(null);
+            synchronized (mLock) {
+                if (mVolumeProvider != null) {
+                    mVolumeProvider.setCallback(null);
+                    mVolumeProvider = null;
+                }
             }
             mVolumeType = MediaControllerCompat.PlaybackInfo.PLAYBACK_TYPE_LOCAL;
             ParcelableVolumeInfo info = new ParcelableVolumeInfo(mVolumeType, mLocalStream,
@@ -1190,16 +1201,17 @@ public class MediaSessionCompat {
             if (volumeProvider == null) {
                 throw new IllegalArgumentException("volumeProvider may not be null");
             }
-            if (mVolumeProvider != null) {
-                mVolumeProvider.setCallback(null);
+            synchronized (mLock) {
+                if (mVolumeProvider != null) {
+                    mVolumeProvider.setCallback(null);
+                }
+                mVolumeProvider = volumeProvider;
             }
             mVolumeType = MediaControllerCompat.PlaybackInfo.PLAYBACK_TYPE_REMOTE;
-            mVolumeProvider = volumeProvider;
             ParcelableVolumeInfo info = new ParcelableVolumeInfo(mVolumeType, mLocalStream,
                     mVolumeProvider.getVolumeControl(), mVolumeProvider.getMaxVolume(),
                     mVolumeProvider.getCurrentVolume());
             sendVolumeInfoChanged(info);
-
             volumeProvider.setCallback(mVolumeCallback);
         }
 
@@ -1307,7 +1319,9 @@ public class MediaSessionCompat {
 
         @Override
         public void setQueue(List<QueueItem> queue) {
-            mQueue = queue;
+            synchronized (mLock) {
+                mQueue = queue;
+            }
             sendQueue(queue);
         }
 
@@ -1334,7 +1348,9 @@ public class MediaSessionCompat {
 
         @Override
         public void setExtras(Bundle extras) {
-            mExtras = extras;
+            synchronized (mLock) {
+                mExtras = extras == null ? null : new Bundle(extras);
+            }
         }
 
         // Registers/unregisters the RCC and MediaButtonEventReceiver as needed.
@@ -1407,8 +1423,10 @@ public class MediaSessionCompat {
 
         private void adjustVolume(int direction, int flags) {
             if (mVolumeType == MediaControllerCompat.PlaybackInfo.PLAYBACK_TYPE_REMOTE) {
-                if (mVolumeProvider != null) {
-                    mVolumeProvider.onAdjustVolume(direction);
+                synchronized (mLock) {
+                    if (mVolumeProvider != null) {
+                        mVolumeProvider.onAdjustVolume(direction);
+                    }
                 }
             } else {
                 mAudioManager.adjustStreamVolume(direction, mLocalStream, flags);
@@ -1417,8 +1435,10 @@ public class MediaSessionCompat {
 
         private void setVolumeTo(int value, int flags) {
             if (mVolumeType == MediaControllerCompat.PlaybackInfo.PLAYBACK_TYPE_REMOTE) {
-                if (mVolumeProvider != null) {
-                    mVolumeProvider.onSetVolumeTo(value);
+                synchronized (mLock) {
+                    if (mVolumeProvider != null) {
+                        mVolumeProvider.onSetVolumeTo(value);
+                    }
                 }
             } else {
                 mAudioManager.setStreamVolume(mLocalStream, value, flags);
@@ -1550,8 +1570,7 @@ public class MediaSessionCompat {
         class MediaSessionStub extends IMediaSession.Stub {
             @Override
             public void sendCommand(String command, Bundle args, ResultReceiverWrapper cb) {
-                mHandler.post(MessageHandler.MSG_COMMAND,
-                        new Command(command, args, cb.mResultReceiver));
+                postCommand(command, args, cb.mResultReceiver);
             }
 
             @Override
@@ -1559,7 +1578,7 @@ public class MediaSessionCompat {
                 boolean handlesMediaButtons =
                         (mFlags & MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS) != 0;
                 if (handlesMediaButtons) {
-                    mHandler.post(MessageHandler.MSG_MEDIA_BUTTON, mediaButton);
+                    postToMessageHandler(MessageHandler.MSG_MEDIA_BUTTON, mediaButton);
                 }
                 return handlesMediaButtons;
             }
@@ -1606,9 +1625,7 @@ public class MediaSessionCompat {
             @Override
             @SessionFlags
             public long getFlags() {
-                synchronized (mLock) {
-                    return mFlags;
-                }
+                return mFlags;
             }
 
             @Override
@@ -1647,78 +1664,80 @@ public class MediaSessionCompat {
 
             @Override
             public void play() throws RemoteException {
-                mHandler.post(MessageHandler.MSG_PLAY);
+                postToMessageHandler(MessageHandler.MSG_PLAY);
             }
 
             @Override
             public void playFromMediaId(String mediaId, Bundle extras) throws RemoteException {
-                mHandler.post(MessageHandler.MSG_PLAY_MEDIA_ID, mediaId, extras);
+                postToMessageHandler(MessageHandler.MSG_PLAY_MEDIA_ID, mediaId, extras);
             }
 
             @Override
             public void playFromSearch(String query, Bundle extras) throws RemoteException {
-                mHandler.post(MessageHandler.MSG_PLAY_SEARCH, query, extras);
+                postToMessageHandler(MessageHandler.MSG_PLAY_SEARCH, query, extras);
             }
 
             @Override
             public void playFromUri(Uri uri, Bundle extras) throws RemoteException {
-                mHandler.post(MessageHandler.MSG_PLAY_URI, uri, extras);
+                postToMessageHandler(MessageHandler.MSG_PLAY_URI, uri, extras);
             }
 
             @Override
             public void skipToQueueItem(long id) {
-                mHandler.post(MessageHandler.MSG_SKIP_TO_ITEM, id);
+                postToMessageHandler(MessageHandler.MSG_SKIP_TO_ITEM, id);
             }
 
             @Override
             public void pause() throws RemoteException {
-                mHandler.post(MessageHandler.MSG_PAUSE);
+                postToMessageHandler(MessageHandler.MSG_PAUSE);
             }
 
             @Override
             public void stop() throws RemoteException {
-                mHandler.post(MessageHandler.MSG_STOP);
+                postToMessageHandler(MessageHandler.MSG_STOP);
             }
 
             @Override
             public void next() throws RemoteException {
-                mHandler.post(MessageHandler.MSG_NEXT);
+                postToMessageHandler(MessageHandler.MSG_NEXT);
             }
 
             @Override
             public void previous() throws RemoteException {
-                mHandler.post(MessageHandler.MSG_PREVIOUS);
+                postToMessageHandler(MessageHandler.MSG_PREVIOUS);
             }
 
             @Override
             public void fastForward() throws RemoteException {
-                mHandler.post(MessageHandler.MSG_FAST_FORWARD);
+                postToMessageHandler(MessageHandler.MSG_FAST_FORWARD);
             }
 
             @Override
             public void rewind() throws RemoteException {
-                mHandler.post(MessageHandler.MSG_REWIND);
+                postToMessageHandler(MessageHandler.MSG_REWIND);
             }
 
             @Override
             public void seekTo(long pos) throws RemoteException {
-                mHandler.post(MessageHandler.MSG_SEEK_TO, pos);
+                postToMessageHandler(MessageHandler.MSG_SEEK_TO, pos);
             }
 
             @Override
             public void rate(RatingCompat rating) throws RemoteException {
-                mHandler.post(MessageHandler.MSG_RATE, rating);
+                postToMessageHandler(MessageHandler.MSG_RATE, rating);
             }
 
             @Override
             public void sendCustomAction(String action, Bundle args)
                     throws RemoteException {
-                mHandler.post(MessageHandler.MSG_CUSTOM_ACTION, action, args);
+                postToMessageHandler(MessageHandler.MSG_CUSTOM_ACTION, action, args);
             }
 
             @Override
             public MediaMetadataCompat getMetadata() {
-                return mMetadata;
+                synchronized (mLock) {
+                    return mMetadata;
+                }
             }
 
             @Override
@@ -1755,6 +1774,28 @@ public class MediaSessionCompat {
             public boolean isTransportControlEnabled() {
                 return (mFlags & FLAG_HANDLES_TRANSPORT_CONTROLS) != 0;
             }
+
+            private void postCommand(String command, Bundle args, ResultReceiver resultCb) {
+                Command cmd = new Command(command, args, resultCb);
+                postToMessageHandler(MessageHandler.MSG_COMMAND, cmd);
+            }
+
+            private void postToMessageHandler(int what) {
+                postToMessageHandler(what, null);
+            }
+
+            private void postToMessageHandler(int what, Object obj) {
+                postToMessageHandler(what, obj, null);
+            }
+
+            private void postToMessageHandler(int what, Object obj, Bundle extras) {
+                synchronized (mLock) {
+                    if (mMessageHandler != null) {
+                        mMessageHandler.post(what, obj, extras);
+                    }
+                }
+            }
+
         }
 
         private static final class Command {
@@ -1794,8 +1835,11 @@ public class MediaSessionCompat {
             private static final int KEYCODE_MEDIA_PAUSE = 127;
             private static final int KEYCODE_MEDIA_PLAY = 126;
 
-            public MessageHandler(Looper looper) {
+            private final MediaSessionCompat.Callback mCallback;
+
+            public MessageHandler(Looper looper, MediaSessionCompat.Callback callback) {
                 super(looper);
+                mCallback = callback;
             }
 
             public void post(int what, Object obj, Bundle bundle) {
