@@ -225,24 +225,6 @@ class MediaSessionCompatApi14 {
     }
 
     static interface Callback {
-        public void onCommand(String command, Bundle extras, ResultReceiver cb);
-
-        public boolean onMediaButtonEvent(Intent mediaButtonIntent);
-
-        public void onPlay();
-
-        public void onPause();
-
-        public void onSkipToNext();
-
-        public void onSkipToPrevious();
-
-        public void onFastForward();
-
-        public void onRewind();
-
-        public void onStop();
-
         public void onSeekTo(long pos);
 
         public void onSetRating(Object ratingObj);

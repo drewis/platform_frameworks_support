@@ -1054,6 +1054,18 @@ public class MediaSessionCompat {
             }
         };
 
+        private final MediaSessionCompatApi14.Callback mRccCb14 = new MediaSessionCompatApi14.Callback() {
+            @Override
+            public void onSetRating(Object ratingObj) {
+                mStub.postToMessageHandler(MessageHandler.MSG_RATE, RatingCompat.fromRating(ratingObj));
+            }
+
+            @Override
+            public void onSeekTo(long pos) {
+                mStub.postToMessageHandler(MessageHandler.MSG_SEEK_TO, pos);
+            }
+        };
+
         public MediaSessionImplBase(Context context, String tag, ComponentName mbrComponent,
                 PendingIntent mbr) {
             if (mbrComponent == null) {
@@ -1091,71 +1103,15 @@ public class MediaSessionCompat {
                     MediaSessionCompatApi19.setOnMetadataUpdateListener(mRccObj, null);
                 }
             } else {
-                MediaSessionCompatApi14.Callback cb14 = new MediaSessionCompatApi14.Callback() {
-                    @Override
-                    public void onStop() {
-                        callback.onStop();
-                    }
-
-                    @Override
-                    public void onSkipToPrevious() {
-                        callback.onSkipToPrevious();
-                    }
-
-                    @Override
-                    public void onSkipToNext() {
-                        callback.onSkipToNext();
-                    }
-
-                    @Override
-                    public void onSetRating(Object ratingObj) {
-                        callback.onSetRating(RatingCompat.fromRating(ratingObj));
-                    }
-
-                    @Override
-                    public void onSeekTo(long pos) {
-                        callback.onSeekTo(pos);
-                    }
-
-                    @Override
-                    public void onRewind() {
-                        callback.onRewind();
-                    }
-
-                    @Override
-                    public void onPlay() {
-                        callback.onPlay();
-                    }
-
-                    @Override
-                    public void onPause() {
-                        callback.onPause();
-                    }
-
-                    @Override
-                    public boolean onMediaButtonEvent(Intent mediaButtonIntent) {
-                        return callback.onMediaButtonEvent(mediaButtonIntent);
-                    }
-
-                    @Override
-                    public void onFastForward() {
-                        callback.onFastForward();
-                    }
-
-                    @Override
-                    public void onCommand(String command, Bundle extras, ResultReceiver cb) {
-                        callback.onCommand(command, extras, cb);
-                    }
-                };
                 if (android.os.Build.VERSION.SDK_INT >= 18) {
                     Object onPositionUpdateObj = MediaSessionCompatApi18
-                            .createPlaybackPositionUpdateListener(cb14);
+                            .createPlaybackPositionUpdateListener(mRccCb14);
                     MediaSessionCompatApi18.setOnPlaybackPositionUpdateListener(mRccObj,
                             onPositionUpdateObj);
                 }
                 if (android.os.Build.VERSION.SDK_INT >= 19) {
                     Object onMetadataUpdateObj = MediaSessionCompatApi19
-                            .createMetadataUpdateListener(cb14);
+                            .createMetadataUpdateListener(mRccCb14);
                     MediaSessionCompatApi19.setOnMetadataUpdateListener(mRccObj,
                             onMetadataUpdateObj);
                 }
