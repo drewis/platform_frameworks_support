@@ -20,6 +20,7 @@ import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.ParcelableVolumeInfo;
 import android.support.v4.media.session.PlaybackStateCompat;
 import android.support.v4.media.session.MediaSessionCompat;
+import android.support.v4.media.session.QueueItemListSlice;
 
 /**
  * Callback interface for a MediaSessionCompat to send updates to a
@@ -33,7 +34,7 @@ oneway interface IMediaControllerCallback {
     // These callbacks are for the TransportController
     void onPlaybackStateChanged(in PlaybackStateCompat state);
     void onMetadataChanged(in MediaMetadataCompat metadata);
-    void onQueueChanged(in List<MediaSessionCompat.QueueItem> queue);
+    void onQueueChanged(in QueueItemListSlice queue);
     void onQueueTitleChanged(CharSequence title);
     void onExtrasChanged(in Bundle extras);
     void onVolumeInfoChanged(in ParcelableVolumeInfo info);

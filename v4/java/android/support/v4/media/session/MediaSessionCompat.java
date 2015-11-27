@@ -1510,12 +1510,13 @@ public class MediaSessionCompat {
         }
 
         private void sendQueue(List<QueueItem> queue) {
+            final QueueItemListSlice queueSlice = new QueueItemListSlice(queue);
             synchronized (mControllerCallbacks) {
                 int size = mControllerCallbacks.beginBroadcast();
                 for (int i = size - 1; i >= 0; i--) {
                     IMediaControllerCallback cb = mControllerCallbacks.getBroadcastItem(i);
                     try {
-                        cb.onQueueChanged(queue);
+                        cb.onQueueChanged(queueSlice);
                     } catch (RemoteException ignored) {
                     }
                 }
