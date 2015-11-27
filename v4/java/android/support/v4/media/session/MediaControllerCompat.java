@@ -555,7 +555,9 @@ public final class MediaControllerCompat {
             }
 
             public void post(int what, Object obj, Bundle data) {
-                obtainMessage(what, obj).sendToTarget();
+                Message message = obtainMessage(what, obj);
+                message.setData(data);
+                message.sendToTarget();
             }
         }
     }
