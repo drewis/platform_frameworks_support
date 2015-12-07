@@ -485,7 +485,7 @@ public final class MediaControllerCompat {
 
             @Override
             public void onQueueChanged(QueueItemListSlice slice) throws RemoteException {
-                mHandler.post(MessageHandler.MSG_UPDATE_QUEUE, slice.getList(), null);
+                mHandler.post(MessageHandler.MSG_UPDATE_QUEUE, slice == null ? null : slice.getList(), null);
             }
 
             @Override
