@@ -1463,8 +1463,8 @@ public class MediaSessionCompat {
                     }
                 }
                 mControllerCallbacks.finishBroadcast();
-                mControllerCallbacks.kill();
             }
+            mControllerCallbacks.kill();
         }
 
         private void sendEvent(String event, Bundle extras) {
