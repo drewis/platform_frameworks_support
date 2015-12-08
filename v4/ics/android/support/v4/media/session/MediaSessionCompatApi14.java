@@ -164,11 +164,11 @@ class MediaSessionCompatApi14 {
         }
         if (metadata.containsKey(METADATA_KEY_ART)) {
             Bitmap art = metadata.getParcelable(METADATA_KEY_ART);
-            editor.putBitmap(RemoteControlClient.MetadataEditor.BITMAP_KEY_ARTWORK, art);
+            editor.putBitmap(RemoteControlClient.MetadataEditor.BITMAP_KEY_ARTWORK, copyBitmap(art));
         } else if (metadata.containsKey(METADATA_KEY_ALBUM_ART)) {
             // Fall back to album art if the track art wasn't available
             Bitmap art = metadata.getParcelable(METADATA_KEY_ALBUM_ART);
-            editor.putBitmap(RemoteControlClient.MetadataEditor.BITMAP_KEY_ARTWORK, art);
+            editor.putBitmap(RemoteControlClient.MetadataEditor.BITMAP_KEY_ARTWORK, copyBitmap(art));
         }
         if (metadata.containsKey(METADATA_KEY_ALBUM)) {
             editor.putString(MediaMetadataRetriever.METADATA_KEY_ALBUM,
@@ -222,6 +222,14 @@ class MediaSessionCompatApi14 {
             editor.putString(MediaMetadataRetriever.METADATA_KEY_WRITER,
                     metadata.getString(METADATA_KEY_WRITER));
         }
+    }
+
+    static Bitmap copyBitmap(Bitmap bitmap) {
+        Bitmap.Config config = bitmap.getConfig();
+        if (config == null) {
+            config = Bitmap.Config.RGB_565;
+        }
+        return bitmap.copy(config, false);
     }
 
     static interface Callback {
